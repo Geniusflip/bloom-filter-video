@@ -1,32 +1,21 @@
-import { HEIGHT, WIDTH, iterateOnMap, drawTile, convertTileListToTileMap } from './utils';
-import { wfc, generateTileList } from './wfc'
+import { chunk, clone, sum } from 'lodash-es';
+import { v4 } from 'uuid';
+import * as fnv1a from '@sindresorhus/fnv1a';
 
 const canvas = document.getElementById('canvas');
 const ctx = (canvas as HTMLCanvasElement).getContext('2d');
-ctx.imageSmoothingEnabled = false;
-ctx.canvas.height = HEIGHT;
-ctx.canvas.width = WIDTH;
-
-const ROWS = 23, COLUMNS = 15;
-
-ctx.setTransform(1,0,0,1,0,0);
-
-const tileMap = JSON.parse(JSON.stringify(new Array(COLUMNS).fill(new Array(ROWS).fill(0))));
-
-
+const imgCanvas = document.getElementById('imgcanvas');
+let imgCtx = (imgCanvas as HTMLCanvasElement).getContext('2d');
 
 const loadImage = async (src: string) => {
     const imgCanvas = document.getElementById('imgcanvas');
-    const imgCtx = (imgCanvas as HTMLCanvasElement).getContext('2d');
+    imgCtx = (imgCanvas as HTMLCanvasElement).getContext('2d');
     imgCtx.imageSmoothingEnabled = false;
-    imgCtx.canvas.height = HEIGHT;
-    imgCtx.canvas.width = WIDTH;
 
     await new Promise((resolve, reject) => {
         try {
             const image = new Image();
             image.onload = () => {
-                console.log(image.naturalHeight);
                 imgCtx.canvas.height = image.naturalHeight;
                 imgCtx.canvas.width = image.naturalWidth;
                 imgCtx.setTransform(1,0,0,1,0,0);
@@ -34,7 +23,7 @@ const loadImage = async (src: string) => {
                 imgCtx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
                 resolve(true);
             };
-            image.onerror = (e) => reject(e);
+            image.onerror = (e) => { reject(e); }
             image.src = src;
         } catch (err) {
             reject(err);
@@ -43,90 +32,135 @@ const loadImage = async (src: string) => {
     return imgCtx;
 }
 
-const sampleImage = (ctx1: CanvasRenderingContext2D, ctx2: CanvasRenderingContext2D) => {
-    const TILEHEIGHT = ctx2.canvas.height / ROWS;
-    const TILEWIDTH = ctx2.canvas.width / COLUMNS;
-    console.log(TILEHEIGHT)
-    tileMap.forEach((col: any[], colNum: number) => {
-        col.forEach((row: number, rowNum: number) => {
-            const imageData = ctx2.getImageData(TILEWIDTH * colNum, TILEHEIGHT * rowNum, TILEWIDTH, TILEHEIGHT);
-            const average = [0,0,0,0];
-            const count = [0,0,0,0];
-
-            const fn = (i:number, n:number) => {
-                average[i] += imageData.data[n];
-                if (imageData.data[n] !== 0) {
-                    count[i]++;
-                }
-            }
-            for (let i = 0; i <= imageData.width; i += 4) {
-                fn(0, i)
-                fn(1, i + 1)
-                fn(2, i + 2)
-                fn(3, i + 3)
-            }
-            const avgData = new ImageData(1, 1);
-    
-            avgData.data[0] = average[0] / count[0];
-            avgData.data[1] = average[1] / count[1];
-            avgData.data[2] = average[2] / count[2];
-            avgData.data[3] = average[3] / count[3];
-            
-
-            ctx1.putImageData(avgData, TILEWIDTH * colNum, TILEHEIGHT * rowNum, 0,0, 1,1);
-            // ctx1.putImageData(imageData, TILEWIDTH * colNum, TILEHEIGHT * rowNum, 0,0, 1,1);
-            
-            // const pixel = ctx1.getImageData(TILEWIDTH * colNum, TILEHEIGHT * rowNum, 1, 1);
-            // console.log(pixel);
-            tileMap[colNum][rowNum] = `rgba(${avgData.data[0]},${avgData.data[1]},${avgData.data[2]},${avgData.data[3]})`
-        });
-    });
-    // draw()
+const percent = 0.2;
+const draw = (ctx: CanvasRenderingContext2D, item: any, col: number, row: number) => {
+    ctx.fillStyle = `rgba(${ item[0]},${  item[1] },${  item[2]}, 1.0`;
+    ctx.fillRect(col, row, 1, 1);
 }
 
+function swap(items:any, leftIndex: any, rightIndex: any){
+    let temp = items[leftIndex];
+    draw(ctx, items[leftIndex], leftIndex  % ctx.canvas.width, Math.floor(leftIndex /  ctx.canvas.width))
+    draw(ctx, items[rightIndex], rightIndex  % ctx.canvas.width, Math.floor(rightIndex /  ctx.canvas.width))
+    items[leftIndex] = items[rightIndex];
+    items[rightIndex] = temp;
+}
 
+const compIndex = (index: number, items: any) => sum(items[index]);
 
-// imgCtx.clearRect(0, 0, WIDTH, HEIGHT);
-// const colour = (val:number) => val ? 'black': 'white';
-// let tileMap = [
-//     [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1].map(x => colour(x)),
-//     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1].map(x => colour(x)),
-//     [1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1].map(x => colour(x)),
-// ]
-// let tileMap: any = [
-//     ['black', 'green', 'green', 'black', 'black', 'green', 'green', 'black'],
-//     ['yellow', 'white', 'white', 'yellow', 'yellow', 'white', 'white', 'yellow'],
-//     ['yellow', 'white', 'white', 'yellow', 'yellow', 'white', 'white', 'yellow'],
-//     ['black', 'green', 'green', 'black', 'black', 'green', 'green', 'black'],
-//     ['black', 'green', 'green', 'black', 'black', 'green', 'green', 'black'],
-//     ['yellow', 'white', 'white', 'yellow', 'yellow', 'white', 'white', 'yellow'],
-//     ['yellow', 'white', 'white', 'yellow', 'yellow', 'white', 'white', 'yellow'],
-//     ['black', 'green', 'green', 'black', 'black', 'green', 'green', 'black'],
-// ]
-(async () => {
-    const imgCtx = await loadImage('Flowers.png');
-    sampleImage(ctx, imgCtx);
+function partition(items: any, left: any, right: any) {
+    const pivotIndex = Math.floor((right + left) / 2);
+    let pivot = compIndex(pivotIndex, items);
+    let i = left; //left pointer
+    let j = right; //right pointer
+    while (i <= j) {
+        while (compIndex(i, items) < pivot) { i++; }
+        while (compIndex(j, items) > pivot) { j--; }
+        if (i <= j) { swap(items, i, j); i++; j--; }
+    }
+    return i;
+}
 
-    const tileSize = 2;
-    const tileList = generateTileList(tileMap, tileSize);
+async function quickSort(items: any, left: any, right:any, intervalId: string) {
+    var index: number;
+    if (items.length > 1) {
+        if (intervalId !== currentId) { return items; }
+        index = partition(items, left, right);
+        if (left < index - 1) { requestAnimationFrame(() => quickSort(items, left, index - 1, intervalId)); }
+        if (index < right) { requestAnimationFrame(() => quickSort(items, index, right, intervalId)); }
+    }
+    return items;
+}
 
-    iterateOnMap(tileMap, ctx, drawTile)
-    const tiles = await wfc(tileList, 16, 16, tileSize)
-    console.log(tiles);
-    const newTileMap = convertTileListToTileMap(tiles, tileList, tileSize);
-    console.log('done');
-    // iterateOnMap(newTileMap, ctx, drawTile)
-}) ()
+let currentId: string;
+
+const main = async () => {
+    const video = document.createElement('video');
+    video.src = './bird.webm';
+    video.muted = true;
+    video.addEventListener('loadeddata', () => {
+
+        video.oncanplay = function() {
+            video.play();
+        };
+    })
+    let interval: NodeJS.Timer;
+    // video.addEventListener('play', async () => {
+    //     ctx.canvas.width = (video as HTMLVideoElement).videoWidth;
+    //     ctx.canvas.height = (video as HTMLVideoElement).videoHeight;
+    //     ctx.imageSmoothingEnabled = false;
+    //     ctx.setTransform(1,0,0,1,0,0);
+    //     imgCtx.canvas.width = (video as HTMLVideoElement).videoWidth;
+    //     imgCtx.canvas.height = (video as HTMLVideoElement).videoHeight;
+    //     imgCtx.imageSmoothingEnabled = false;
+    //     imgCtx.setTransform(1,0,0,1,0,0);
+    //     clearInterval(interval);
+    //     interval = setInterval(async () => {
+    //         let id = v4();
+    //         currentId = id;
+    //         imgCtx.drawImage(video as HTMLVideoElement, 0, 0, imgCtx.canvas.width, imgCtx.canvas.height);
+    //         const imageData = imgCtx.getImageData(0,0, imgCtx.canvas.width, imgCtx.canvas.height).data;
+    //         let pixelData = chunk(imageData as any, 4);
+    //         pixelData = await quickSort(pixelData, 0, pixelData.length - 1, id);
+    //     }, 100);
+    // }, false);
+    console.log('yo')
+    video.addEventListener('play', () => {
+        ctx.canvas.width = (video as HTMLVideoElement).videoWidth;
+        ctx.canvas.height = (video as HTMLVideoElement).videoHeight;
+        ctx.imageSmoothingEnabled = false;
+        ctx.setTransform(1,0,0,1,0,0);
+        imgCtx.canvas.width = (video as HTMLVideoElement).videoWidth;
+        imgCtx.canvas.height = (video as HTMLVideoElement).videoHeight;
+        imgCtx.imageSmoothingEnabled = false;
+        imgCtx.setTransform(1,0,0,1,0,0);
+        clearInterval(interval);
+        const bloomFilters = {
+            r: new Map(),
+            g: new Map(),
+            b: new Map(),
+        }
+        interval = setInterval(async () => {
+            imgCtx.drawImage(video as HTMLVideoElement, 0, 0, imgCtx.canvas.width, imgCtx.canvas.height);
+            const imageData = imgCtx.getImageData(0,0, imgCtx.canvas.width, imgCtx.canvas.height).data;
+            let pixeldata = chunk(imageData, 4);
+            
+            const len = Math.floor(pixeldata.length );
+            const set = (map ,hash, value) => {
+                if (map.has(hash)) {
+                    // map.set(hash, Math.floor(map.get(hash)  +value) / 2));
+                    // map.set(hash, Math.floor((map.get(hash)  +value) / 2));
+                    map.set(hash, Math.max(map.get(hash), value));
+                } else {
+                    map.set(hash, value);
+                }
+            };
+            pixeldata.forEach((data, i) => {
+                set(bloomFilters.r, fnv1a(i.toString()) % len , data[0])
+                set(bloomFilters.g, fnv1a(i.toString()) % len , data[1])
+                set(bloomFilters.b, fnv1a(i.toString()) % len , data[2])
+            });
+
+            // const multiplier = Math.floor(Math.random() * 100)
+            const multiplier = 1;
+            pixeldata.forEach((data, i) => {
+                draw(
+                    ctx,
+                    [
+                        bloomFilters.r.get(fnv1a(data[0].toString()) % len) * multiplier % 255,
+                        bloomFilters.g.get(fnv1a(data[1].toString()) % len) * multiplier % 255,
+                        bloomFilters.b.get(fnv1a(data[2].toString()) % len) * multiplier % 255,
+                        // bloomFilters.r[fnv1a(i.toString()) % len],
+                        // bloomFilters.g[fnv1a(i.toString()) % len],
+                        // bloomFilters.b[fnv1a(i.toString()) % len],
+                        data[3]
+                    ],
+                    i % ctx.canvas.width,
+                    Math.floor(i / ctx.canvas.width)
+                );
+            });
+        },5);
+    })
+};
+
+main();
